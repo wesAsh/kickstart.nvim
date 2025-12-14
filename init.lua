@@ -974,10 +974,10 @@ require('lazy').setup({
   --  Uncomment any of the lines below to enable them (you will need to restart nvim).
   --
   -- require 'kickstart.plugins.debug',
-  -- require 'kickstart.plugins.indent_line',
+     require 'kickstart.plugins.indent_line',
   -- require 'kickstart.plugins.lint',
-  -- require 'kickstart.plugins.autopairs',
-  -- require 'kickstart.plugins.neo-tree',
+     require 'kickstart.plugins.autopairs',
+     require 'kickstart.plugins.neo-tree',
   -- require 'kickstart.plugins.gitsigns', -- adds gitsigns recommend keymaps
 
   -- NOTE: The import below can automatically add your own plugins, configuration, etc from `lua/custom/plugins/*.lua`
@@ -1011,6 +1011,11 @@ require('lazy').setup({
     },
   },
 })
+
+local ok, err = pcall(vim.cmd, 'source ~/.config/nvim/init_legacy.vim')
+if not ok then
+  vim.notify('Failed to source legacy.vim: ' .. err, vim.log.levels.ERROR)
+end
 
 -- The line beneath this is called `modeline`. See `:help modeline`
 -- vim: ts=2 sts=2 sw=2 et
