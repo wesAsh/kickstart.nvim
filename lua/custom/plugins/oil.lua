@@ -16,7 +16,8 @@ return {
     columns = {
       'permissions',
       'size',
-      'mtime',
+      -- 'mtime',
+      { 'mtime', format = '%Y-%m-%d %H:%M:%S' },
       'icon',
     },
     -- Buffer-local options to use for oil buffers
@@ -74,7 +75,8 @@ return {
       ['<C-c>'] = 'actions.close',
       ['<C-l>'] = 'actions.refresh',
       ['-'] = 'actions.parent',
-      ['h'] = 'actions.parent',
+      ['<leader>h'] = 'actions.parent',
+      -- ['h'] = 'actions.parent',
       ['_'] = 'actions.open_cwd',
       ['`'] = 'actions.cd',
       ['.'] = 'actions.cd',
@@ -99,7 +101,7 @@ return {
     use_default_keymaps = true,
     view_options = {
       -- Show files and directories that start with "."
-      show_hidden = false,
+      show_hidden = true,
       -- This function defines what is considered a "hidden" file
       is_hidden_file = function(name, bufnr)
         return vim.startswith(name, '.')

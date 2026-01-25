@@ -18,6 +18,7 @@ return {
       window = {
         mappings = {
           ['\\'] = 'close_window',
+          ['ZZ'] = 'show_file_details',
         },
       },
     },
