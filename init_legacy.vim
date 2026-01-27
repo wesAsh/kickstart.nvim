@@ -7,7 +7,7 @@ set clipboard=unnamedplus
 
 " scroll up:   <C-y> <C-u>
 " scroll down: <C-e> <C-d>
-nnoremap <C-r> <C-y>
+" nnoremap <C-r> <C-y>
 
 nnoremap <A-Space> :
 

@@ -1017,5 +1017,30 @@ if not ok then
   vim.notify('Failed to source legacy.vim: ' .. err, vim.log.levels.ERROR)
 end
 
+
+local current_dir = vim.fn.expand('<sfile>:p:h')
+
+-- Function to source a file with notification
+local function source_file(filename)
+  local filepath = current_dir .. '/' .. filename
+
+  -- Check if file exists
+  if vim.fn.filereadable(filepath) == 1 then
+    -- File exists, try to source it
+    local success, err = pcall(dofile, filepath)
+
+    if success then
+      vim.notify('✓ Sourced: ' .. filename, vim.log.levels.INFO)
+    else
+      vim.notify('✗ Error sourcing ' .. filename .. ': ' .. err, vim.log.levels.ERROR)
+    end
+  else
+    vim.notify('✗ File not found: ' .. filepath, vim.log.levels.WARN)
+  end
+end
+
+-- Use it
+source_file 'init_my.lua'
+
 -- The line beneath this is called `modeline`. See `:help modeline`
--- vim: ts=2 sts=2 sw=2 et
+-- vim: fdm=indent ts=2 sts=2 sw=2 et
