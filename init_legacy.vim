@@ -4,6 +4,7 @@ echom printf("$VIMRUNTIME = %s", $VIMRUNTIME)
 
 " vim.opt.clipboard = "unnamedplus"
 set clipboard=unnamedplus
+set fileformats=unix,dos
 
 " scroll up:   <C-y> <C-u>
 " scroll down: <C-e> <C-d>

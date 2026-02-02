@@ -974,10 +974,10 @@ require('lazy').setup({
   --  Uncomment any of the lines below to enable them (you will need to restart nvim).
   --
   -- require 'kickstart.plugins.debug',
-     require 'kickstart.plugins.indent_line',
+  require 'kickstart.plugins.indent_line',
   -- require 'kickstart.plugins.lint',
-     require 'kickstart.plugins.autopairs',
-     require 'kickstart.plugins.neo-tree',
+  require 'kickstart.plugins.autopairs',
+  require 'kickstart.plugins.neo-tree',
   -- require 'kickstart.plugins.gitsigns', -- adds gitsigns recommend keymaps
 
   -- NOTE: The import below can automatically add your own plugins, configuration, etc from `lua/custom/plugins/*.lua`
@@ -1012,35 +1012,45 @@ require('lazy').setup({
   },
 })
 
-local ok, err = pcall(vim.cmd, 'source ~/.config/nvim/init_legacy.vim')
-if not ok then
-  vim.notify('Failed to source legacy.vim: ' .. err, vim.log.levels.ERROR)
-end
-
 
 local current_dir = vim.fn.expand('<sfile>:p:h')
+
+if false then
+  source_file 'init_experimental.lua'
+  local ok, err = pcall(vim.cmd, 'source ~/.config/nvim/init_legacy.vim')
+  if not ok then
+    vim.notify('Failed to source legacy.vim: ' .. err, vim.log.levels.ERROR)
+  end
+end
 
 -- Function to source a file with notification
 local function source_file(filename)
   local filepath = current_dir .. '/' .. filename
 
-  -- Check if file exists
-  if vim.fn.filereadable(filepath) == 1 then
-    -- File exists, try to source it
-    local success, err = pcall(dofile, filepath)
-
-    if success then
-      vim.notify('✓ Sourced: ' .. filename, vim.log.levels.INFO)
-    else
-      vim.notify('✗ Error sourcing ' .. filename .. ': ' .. err, vim.log.levels.ERROR)
-    end
-  else
+  if vim.fn.filereadable(filepath) == 0 then
     vim.notify('✗ File not found: ' .. filepath, vim.log.levels.WARN)
+    return
+  end
+
+  local success, err
+  -- Auto-detect based on extension (lua or vim)
+  if filename:match '%.lua$' then
+    success, err = pcall(dofile, filepath)
+  else
+    success, err = pcall(vim.cmd.source, filepath)
+  end
+
+  if success then
+    vim.notify('✓ Sourced: ' .. filename, vim.log.levels.INFO)
+  else
+    vim.notify('✗ Error sourcing ' .. filename .. ': ' .. err, vim.log.levels.ERROR)
   end
 end
 
--- Use it
+-- Usage (no need to specify type)
 source_file 'init_my.lua'
+source_file 'init_legacy.vim'
+
 
 -- The line beneath this is called `modeline`. See `:help modeline`
 -- vim: fdm=indent ts=2 sts=2 sw=2 et
