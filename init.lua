@@ -941,8 +941,14 @@ require('lazy').setup({
   { -- Highlight, edit, and navigate code
     'nvim-treesitter/nvim-treesitter',
     build = ':TSUpdate',
-    main = 'nvim-treesitter.configs', -- Sets main module to use for opts
+    main = 'nvim-treesitter.config', -- Sets main module to use for opts
     -- [[ Configure Treesitter ]] See `:help nvim-treesitter`
+
+    -- 👇 ADD THIS PART
+    init = function()
+      require('nvim-treesitter.install').compilers = { 'zig' }
+    end,
+
     opts = {
       ensure_installed = { 'bash', 'c', 'diff', 'html', 'lua', 'luadoc', 'markdown', 'markdown_inline', 'query', 'vim', 'vimdoc' },
       -- Autoinstall languages that are not installed
@@ -1013,7 +1019,8 @@ require('lazy').setup({
 })
 
 
-local current_dir = vim.fn.expand('<sfile>:p:h')
+-- local current_dir = vim.fn.expand('<sfile>:p:h')
+local current_dir = vim.fn.expand '<sfile>:p:h'
 
 if false then
   source_file 'init_experimental.lua'
@@ -1050,7 +1057,6 @@ end
 -- Usage (no need to specify type)
 source_file 'init_my.lua'
 source_file 'init_legacy.vim'
-
 
 -- The line beneath this is called `modeline`. See `:help modeline`
 -- vim: fdm=indent ts=2 sts=2 sw=2 et
