@@ -1,4 +1,6 @@
-echom printf("Hi from nvim")
+let s:path = expand('<sfile>:p') " Absolute path of script file
+
+echom printf("[%s] Hi from nvim", s:path)
 echom printf("$VIM = %s", $VIM)
 echom printf("$VIMRUNTIME = %s", $VIMRUNTIME)
 
@@ -14,6 +16,15 @@ nnoremap <A-Space> :
 
 " lua require('plugins')
 nnoremap <space>f :Oil<CR>
+
+nnoremap <space>of :Oil<CR>
+nnoremap <space>od :Oil /work/wshabso/<CR>
+nnoremap <Space>oh :Oil ~<CR>
+
+vnoremap ya "ay
+nnoremap pa "agP
+
+
 
 finish
 ████████████████████████████████████████████████████████████
