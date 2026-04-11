@@ -23,8 +23,16 @@ nnoremap <Space>oh :Oil ~<CR>
 
 vnoremap ya "ay
 nnoremap pa "agP
+vnoremap c  "+y
+vnoremap <C-c> "+y
+nnoremap <C-v> "+gP
+cnoremap <C-v> <C-R>+
+inoremap <C-v> <C-O>"+gP
 
-
+tnoremap jk <C-\><C-n>
+nnoremap <C-a> :buffer #<CR>
+tnoremap <C-a> <C-\><C-O>:buffer #<CR>
+inoremap <C-a> <C-O>:buffer #<CR>
 
 finish
 ████████████████████████████████████████████████████████████

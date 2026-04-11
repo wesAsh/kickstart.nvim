@@ -311,7 +311,7 @@ require('lazy').setup({
     ---@diagnostic disable-next-line: missing-fields
     opts = {
       -- delay between pressing a key and opening which-key (milliseconds)
-      delay = 0,
+      delay = 500,
       icons = { mappings = vim.g.have_nerd_font },
 
       -- Document existing key chains
@@ -968,17 +968,13 @@ require('lazy').setup({
   },
 })
 
-
-
 -- local current_dir = vim.fn.expand('<sfile>:p:h')
 local current_dir = vim.fn.expand '<sfile>:p:h'
 
 if false then
   source_file 'init_experimental.lua'
   local ok, err = pcall(vim.cmd, 'source ~/.config/nvim/init_legacy.vim')
-  if not ok then
-    vim.notify('Failed to source legacy.vim: ' .. err, vim.log.levels.ERROR)
-  end
+  if not ok then vim.notify('Failed to source legacy.vim: ' .. err, vim.log.levels.ERROR) end
 end
 
 -- Function to source a file with notification
