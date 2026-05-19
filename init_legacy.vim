@@ -34,6 +34,35 @@ nnoremap <C-a> :buffer #<CR>
 tnoremap <C-a> <C-\><C-O>:buffer #<CR>
 inoremap <C-a> <C-O>:buffer #<CR>
 
+nnoremap <A-BS> u
+" nnoremap u :Telescope buffers<CR>
+
+nnoremap <C-r> <C-y>
+
+
+nnoremap . <right>
+nnoremap , <left>
+
+set virtualedit=onemore,block
+
+" Annoying -- SELECT -- mode where esc doesn't work...
+set selectmode=mouse,key
+set selectmode=
+
+
+
+set scrolloff=8      | " keep X lines above and below the cursor when scrolling
+set scrolloff=0
+set sidescrolloff=8
+
+nnoremap <C-s> :update<CR>
+
+nnoremap cfp :let @+ = expand("%:p")<CR>
+
+luafile ~/.config/nvim/init_tmp.lua
+source  ~/.config/nvim/init_tmp.vim
+source  ~/.config/nvim/tmp_movement.vim
+
 finish
 ████████████████████████████████████████████████████████████
 
