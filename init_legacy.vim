@@ -59,9 +59,24 @@ nnoremap <C-s> :update<CR>
 
 nnoremap cfp :let @+ = expand("%:p")<CR>
 
-luafile ~/.config/nvim/init_tmp.lua
-source  ~/.config/nvim/init_tmp.vim
-source  ~/.config/nvim/tmp_movement.vim
+let dirPath = expand('<sfile>:p:h')  " file directory path
+
+exe printf("luafile %s/init_tmp.lua", dirPath)
+exe printf("source  %s/init_tmp.vim", dirPath)
+exe printf("source  %s/tmp_movement.vim", dirPath)
+
+" luafile ~/.config/nvim/init_tmp.lua
+
+
+hi BufferLineBufferSelected  guifg=#ffffff guibg=#3b4261 gui=bold
+hi BufferLineNumbersSelected guifg=#ffffff guibg=#3b4261 gui=bold
+
+let file_path = dirPath . "/remote_session_open.vim"
+if filereadable(file_path)
+	exe printf("e %s", file_path)
+endif
+
+nnoremap g<Space> ^v$"pygj:<C-R>p<CR>
 
 finish
 ████████████████████████████████████████████████████████████

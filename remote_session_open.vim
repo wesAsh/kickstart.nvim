@@ -1,5 +1,7 @@
 let s:path = expand('<sfile>:p') " Absolute path of script file
 
+let g:_file_default_bufnum = bufadd("/work/wshabso/.main/.help/files_to_open.txt")
+
 func Session01()
 	terminal
 	file TMUX
@@ -19,4 +21,15 @@ func Get_current_buffer_path()
 	endif
 endfunc
 
+func BufferDelete()
+	let bufnum = bufnr()
+	exe printf("b %d", g:_file_default_bufnum)
+	exe printf("bd %d", bufnum)
+endfunc
+
 nnoremap cp :call Get_current_buffer_path()<CR>
+
+
+finish
+source % | call Session01()
+
