@@ -978,13 +978,16 @@ if false then
 end
 
 -- Function to source a file with notification
-local function source_file(filename)
+-- local function source_file(filename)
+function source_file(filename)
   local filepath = current_dir .. '/' .. filename
 
   if vim.fn.filereadable(filepath) == 0 then
     vim.notify('✗ File not found: ' .. filepath, vim.log.levels.WARN)
     return
   end
+
+  vim.notify('source ' .. filepath, vim.log.levels.info)
 
   local success, err
   -- Auto-detect based on extension (lua or vim)
@@ -1002,8 +1005,7 @@ local function source_file(filename)
 end
 
 -- Usage (no need to specify type)
-source_file 'init_my.lua'
-source_file 'init_legacy.vim'
+source_file '__source.lua'
 
 -- The line beneath this is called `modeline`. See `:help modeline`
 -- vim: fdm=indent ts=2 sts=2 sw=2 et

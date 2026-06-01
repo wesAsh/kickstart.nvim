@@ -1,9 +1,3 @@
--- vim.keymap.set('n', '<A-j>', ':m .+1<CR>==', { desc = 'Move line down' })
--- vim.keymap.set('n', '<A-k>', ':m .-2<CR>==', { desc = 'Move line up' })
-
-vim.keymap.set('n', 'E', ':m .-2<CR>==', { desc = 'Move line up' })
-vim.keymap.set('n', 'D', ':m .+1<CR>==', { desc = 'Move line down' })
-
 local function xclip_health_problem()
   -- check if xclip binary is in PATH
   if vim.fn.executable 'xclip' == 0 then return false end
@@ -73,4 +67,4 @@ else
 end
 --]]
 
-if vim.fn.has 'nvim-0.11' == 1 then return end
+-- vim: fdm=indent ts=2 sts=2 sw=2 et

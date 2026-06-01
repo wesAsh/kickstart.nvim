@@ -53,3 +53,4 @@ if false then
   vim.keymap.set({ 'n', 'i', 't' }, '<C-l>', next_buffer)
   -- vim.keymap.set({ 'n', 'i', 't' }, '<C-k>', prev_buffer)
 end
+
