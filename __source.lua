@@ -5,7 +5,8 @@ source_file 'my_config/init_legacy.vim'
 
 source_file 'my_config/telescope_bufferline.lua'
 source_file 'my_config/tmp_movement.vim'
-source_file 'my_config/clipboard.lua'
+-- source_file 'my_config/clipboard.lua'
+source_file 'my_config/clipboard_V2.lua'
 
 source_file 'my_config/remote_session_open.vim'
 
