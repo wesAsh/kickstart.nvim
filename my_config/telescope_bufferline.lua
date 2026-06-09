@@ -12,6 +12,10 @@ vim.keymap.set('i', '<C-h>', '<C-o><cmd>BufferLineCyclePrev<cr>')
 vim.keymap.set('t', '<C-l>', [[<C-\><C-n><cmd>BufferLineCycleNext<cr>]])
 vim.keymap.set('t', '<C-h>', [[<C-\><C-n><cmd>BufferLineCyclePrev<cr>]])
 
+-- stay in terminal mode
+vim.keymap.set('t', '<C-l>', [[<C-\><C-o><cmd>BufferLineCycleNext<cr>]])
+vim.keymap.set('t', '<C-h>', [[<C-\><C-o><cmd>BufferLineCyclePrev<cr>]])
+
 vim.keymap.set('x', 'x', '"_x', { desc = 'Delete without yanking' })
 vim.keymap.set('x', '<BS>', '"_d', { desc = 'Delete selection without yanking' })
 
