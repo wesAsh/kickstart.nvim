@@ -29,6 +29,7 @@ nnoremap <C-v> "+gP
 cnoremap <C-v> <C-R>+
 inoremap <C-v> <C-O>"+gP
 
+tnoremap <Esc><Esc> <C-\><C-n>
 tnoremap jk <C-\><C-n>
 nnoremap <C-a> :buffer #<CR>
 tnoremap <C-a> <C-\><C-O>:buffer #<CR>
@@ -71,8 +72,9 @@ nnoremap , <left>
 
 nnoremap cl V"py"pgP
 
-tnoremap <C-w>h <C-\><C-n><C-w>h
-tnoremap <C-w>l <C-\><C-n><C-w>l
+" Insert an underscore (window movement lives in mappings/window_movement.vim)
+inoremap <A-d> _
+cnoremap <A-d> _
 
 
 finish

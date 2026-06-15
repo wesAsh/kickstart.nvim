@@ -3,8 +3,18 @@
 source_file 'my_config/init_my.lua'
 source_file 'my_config/init_legacy.vim'
 
+-- functions before mappings that call them
+source_file 'my_config/functions/window_movement.vim'
+source_file 'my_config/functions/line_movement.vim'
+source_file 'my_config/functions/editing.vim'
+source_file 'my_config/functions/terminal.vim'
+source_file 'my_config/mappings/window_movement.vim'
+source_file 'my_config/mappings/line_movement.vim'
+source_file 'my_config/mappings/editing.vim'
+source_file 'my_config/mappings/terminal.vim'
+
 source_file 'my_config/telescope_bufferline.lua'
-source_file 'my_config/tmp_movement.vim'
+source_file 'my_config/visual_selection.vim'
 -- source_file 'my_config/clipboard.lua'
 source_file 'my_config/clipboard_V2.lua'
 
