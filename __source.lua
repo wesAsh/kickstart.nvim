@@ -18,6 +18,9 @@ source_file 'my_config/visual_selection.vim'
 -- source_file 'my_config/clipboard.lua'
 source_file 'my_config/clipboard_V2.lua'
 
+-- :Banner — pyfiglet ASCII-art text banners (default font ansi_shadow)
+source_file 'my_config/banner.lua'
+
 source_file 'my_config/remote_session_open.vim'
 
 local source = debug.getinfo(1, "S").source
