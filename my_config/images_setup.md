@@ -1,7 +1,7 @@
 # Inline images in Neovim on WezTerm (Windows) + WSL2
 
 How inline image rendering works in this config. Stack: WezTerm (native Windows)
-→ WSL2 Neovim → **image.nvim** (kitty backend) for inline rendering +
+→ WSL2 Neovim → **image.nvim** (sixel backend) for inline rendering +
 **img-clip.nvim** for clipboard paste, in markdown notes.
 
 ## TL;DR — the one thing that matters
@@ -39,9 +39,10 @@ detects the missing v7 `magick` binary and falls back automatically. **No LuaRoc
 ## WezTerm
 
 `config.enable_kitty_graphics = true` is set (in
-`C:/ws/.frequent/terminal/wezterm/wezterm.lua`). It's **off by default** and the
-kitty backend needs it. On nightly this finally takes effect (on old stable,
-ConPTY stripped the bytes regardless of the flag).
+`C:/ws/.frequent/terminal/wezterm/wezterm.lua`). It's **off by default**. Our sixel
+backend doesn't need it — it's left on harmlessly for the kitty path (only usable
+over an SSH domain here; see Durability). On old stable, ConPTY stripped the
+graphics bytes regardless of this flag.
 
 We use the **sixel** backend, NOT kitty — this is essential, not a preference.
 image.nvim's kitty backend transmits images by writing a temp file to a **WSL
@@ -94,6 +95,41 @@ directly in the terminal, NOT in tmux, NOT via `:!`).
 - **`:checkhealth img-clip` errors on `wl-clipboard`** → false positive under WSLg,
   ignore (its health check tests `WAYLAND_DISPLAY` before the WSL branch; the actual
   paste path uses `powershell.exe`). Do NOT install `wl-clipboard`.
+
+## Durability: living with the nightly dependency (checked 2026-07-04)
+
+**There is no stable release to move to.** The releases page still shows
+`20240203-110809-5046fc22` as "Latest" — no tagged release in ~2.5 years; nightly
+is WezTerm's de facto channel, and the ConPTY fix (#1236) only ever landed there.
+
+The real fragility is that the `nightly` GitHub tag is **rolling**: each build
+overwrites the previous one's assets, and old nightlies are NOT archived. If the
+working build is lost, that exact binary can't be re-downloaded. So:
+
+1. **Archive the working build**: record `wezterm --version` and keep a backed-up
+   copy of the portable nightly folder (or its zip) next to the version string.
+2. **Never blind-update**: before adopting a newer nightly, run
+   `my_config/scripts/img_protocol_test.sh` in a plain WSL pane — three roses =
+   safe to delete the old folder. (The fix is bundled `conpty.dll`/
+   `OpenConsole.exe`, which future nightlies keep, so upgrades *should* stay good.)
+3. **Break-glass fallback** if a nightly ever regresses: the SSH domain below
+   works on any WezTerm build including old stable — and the **sixel backend works
+   over it unchanged** (WezTerm #6032), so the Neovim config needs zero changes
+   between transports.
+
+Solidity ranking (2026-07-04 investigation): pinned+archived nightly + sixel
+(current) > stable + ssh_domain + sixel > stable + ssh_domain + kitty-direct
+(better quality, but stable's kitty renderer had crash bugs fixed only in nightly,
+and image.nvim calls WezTerm's kitty impl "not officially supported") > WSLg Linux
+kitty (best fidelity, separate blurry-HiDPI GUI window).
+
+Verified detail behind "kitty-direct over SSH": `backends/kitty/init.lua` line 7
+sets `is_SSH` from `SSH_CLIENT`/`SSH_TTY`, lines 47–49 then switch
+`transmit_medium` from `file` to `direct` (inline chunked PNG — no WSL path). Two
+untested curiosities, don't rely on them: grafting nightly's two ConPTY binaries
+into a stable install might give "stable + fixed ConPTY"; setting
+`vim.env.SSH_TTY = "1"` before image.nvim loads would force kitty-direct without
+ssh (the check is env-only).
 
 ## Alternative: SSH domain (works on WezTerm STABLE, no nightly)
 
