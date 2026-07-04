@@ -58,3 +58,15 @@ if false then
   -- vim.keymap.set({ 'n', 'i', 't' }, '<C-k>', prev_buffer)
 end
 
+local function buf_cycle(cmd)
+  -- Remember whether this terminal had terminal-job mode active.
+  if vim.bo.buftype == 'terminal' then vim.b.term_resume = vim.api.nvim_get_mode().mode == 't' end
+
+  vim.cmd(cmd) -- callback/<Cmd> switch: no return-to-mode, lands Normal on a normal buffer
+
+  -- Re-assert terminal mode only when returning to a terminal that had it.
+  if vim.bo.buftype == 'terminal' and vim.b.term_resume then vim.cmd 'startinsert' end
+end
+
+vim.keymap.set({ 'n', 't' }, '<C-l>', function() buf_cycle 'BufferLineCycleNext' end, { desc = 'Next buffer' })
+vim.keymap.set({ 'n', 't' }, '<C-h>', function() buf_cycle 'BufferLineCyclePrev' end, { desc = 'Prev buffer' })

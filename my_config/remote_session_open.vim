@@ -31,5 +31,5 @@ nnoremap cp :call Get_current_buffer_path()<CR>
 
 
 finish
-source % | call Session01()
+source % | bdelete | call Session01()
 

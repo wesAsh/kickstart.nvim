@@ -13,6 +13,7 @@ set fileformats=unix,dos
 " nnoremap <C-r> <C-y>
 
 nnoremap <A-Space> :
+tnoremap <A-Space> <C-\><C-O>:
 
 " lua require('plugins')
 nnoremap <space>f :Oil<CR>
@@ -65,7 +66,9 @@ nnoremap cfp :let @+ = expand("%:p")<CR>
 hi BufferLineBufferSelected  guifg=#ffffff guibg=#3b4261 gui=bold
 hi BufferLineNumbersSelected guifg=#ffffff guibg=#3b4261 gui=bold
 
-nnoremap g<Space> ^v$"pygj:<C-R>p<CR>
+" How NOT to do it (yank-hack, shadowed by the line below):
+" nnoremap g<Space> ^v$"pygj:<C-R>p<CR>
+nnoremap g<Space> :<C-U>execute trim(getline('.'))<CR>gj
 
 nnoremap . <right>
 nnoremap , <left>
@@ -75,6 +78,7 @@ nnoremap cl V"py"pgP
 " Insert an underscore (window movement lives in mappings/window_movement.vim)
 inoremap <A-d> _
 cnoremap <A-d> _
+tnoremap <A-d> _
 
 
 finish

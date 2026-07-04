@@ -5,12 +5,12 @@
 
 function! WindowRight(is_normal_mode)
     if bufname('%') =~# 'TMUX'
-	if (a:is_normal_mode)
-		startinsert
-	endif
+	    if (a:is_normal_mode)
+		    startinsert
+	    endif
         call feedkeys("\<M-;>", "n")
     else
-	wincmd w
+	    wincmd w
     endif
 endfunction
 
