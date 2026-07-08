@@ -23,6 +23,7 @@ local defaults = {
   tail_lines = 40, -- how many trailing lines to pull from the buffer
   active_lines = 8, -- of those, how many trailing NON-blank lines to actually match
   hook_ttl = 30, -- seconds a hook-reported state (M.report) stays authoritative before falling back to TUI scraping
+  done_debounce = 2, -- seconds a session must stay idle before it's announced as "finished" (absorbs premature Stop / quick resume)
   notify = true, -- vim.notify (toast/message) on new blocked / finished session
   hud = false, -- persistent top-right float listing every ACTIVE agent (working/blocked/done)
   popup = false, -- attention-only float (blocked/done); superseded by `hud` when hud=true
@@ -284,23 +285,49 @@ local function scan()
   for _, buf in ipairs(vim.api.nvim_list_bufs()) do
     if vim.api.nvim_buf_is_loaded(buf) and vim.bo[buf].buftype == 'terminal' and is_agent(buf) then
       seen[buf] = true
-      -- A hook-reported state (M.report) is authoritative for hook_ttl seconds;
-      -- otherwise fall back to scraping the TUI.
+      -- Reconcile the hook-reported state (M.report) with a fresh TUI scrape.
+      -- Hooks give crisp enter-signals but no "un-blocked" event and can emit a
+      -- premature Stop, so the screen corrects them:
+      --   report 'idle'    but screen busy    -> trust the screen (not finished)
+      --   report 'blocked' but screen working -> agent resumed after you answered
+      local scr = classify(buf)
       local r = M.reported[buf]
-      local state = (r and (os.time() - r.at) <= M.opts.hook_ttl) and r.state or classify(buf)
+      local rep = (r and (os.time() - r.at) <= M.opts.hook_ttl) and r.state or nil
+      local state
+      if not rep then
+        state = scr
+      elseif rep == 'working' then
+        state = (scr == 'blocked') and 'blocked' or 'working'
+      elseif rep == 'blocked' then
+        state = (scr == 'working') and 'working' or 'blocked'
+      else -- rep == 'idle' (Stop / idle_prompt)
+        state = (scr ~= 'idle') and scr or 'idle'
+      end
+
       local prev = M.sessions[buf]
       local name = term_title(buf) -- recompute each poll so renames/title changes show
 
-      -- "done" = finished working and not yet looked at. Persists across idle
-      -- polls; cleared when the agent works again or you view its buffer.
+      -- "done" = finished working, debounced so a premature Stop or a quick
+      -- resume (e.g. right after answering a prompt) doesn't flash a false
+      -- "finished". Cleared when it works again or you view its buffer.
       local was_done = prev and prev.done or false
-      local done
+      local done, pending = false, false
       if state == 'idle' then
-        done = was_done or (prev ~= nil and prev.state == 'working')
-      else
-        done = false
+        if was_done then
+          done = true -- already announced; stay done
+        elseif prev and prev.state == 'working' then
+          pending = true -- just went idle; wait out the debounce
+        elseif prev and prev.state == 'idle' and prev.finished_pending then
+          if (os.time() - prev.changed_at) >= M.opts.done_debounce then
+            done = true
+          else
+            pending = true
+          end
+        end
       end
-      if buf == cur then done = false end -- acknowledged by viewing it
+      if buf == cur then
+        done, pending = false, false -- viewing it = acknowledged
+      end
 
       if state == 'blocked' and prev and prev.state ~= 'blocked' then
         newly_blocked[#newly_blocked + 1] = name
@@ -315,6 +342,7 @@ local function scan()
         name = name,
         changed_at = changed and os.time() or prev.changed_at,
         done = done,
+        finished_pending = pending,
       }
     end
   end
