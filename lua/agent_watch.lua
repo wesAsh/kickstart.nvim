@@ -1,7 +1,12 @@
 -- agent-watch.nvim ------------------------------------------------------------
 -- Watch all terminal buffers running AI CLIs (Claude Code, Codex, etc.),
--- classify each as WORKING / BLOCKED / IDLE, notify on "needs your Y/N",
+-- classify each as WORKING / BLOCKED / IDLE, alert on "needs your Y/N",
 -- and jump to the blocked one with one keypress.
+--
+-- Alert channels (all independent, configurable in setup):
+--   notify = true   toast/message when a session enters BLOCKED
+--   popup  = false  floating window listing blocked agents while any are blocked
+--   echo   = false  continuously show active (blocked+working) agents in the echo line
 --
 -- Zero dependencies. Drop into ~/.config/nvim/lua/agent_watch.lua and call:
 --   require("agent_watch").setup()
@@ -13,7 +18,9 @@ local defaults = {
   poll_ms = 1000, -- how often to scan terminal buffers
   tail_lines = 40, -- how many trailing lines to pull from the buffer
   active_lines = 8, -- of those, how many trailing NON-blank lines to actually match
-  notify = true, -- vim.notify when a session transitions to BLOCKED
+  notify = true, -- vim.notify (toast/message) when a session enters BLOCKED
+  popup = false, -- also pop a floating window listing blocked agents
+  echo = false, -- continuously show active (blocked+working) agents in the echo line
   icons = { working = '🟡', blocked = '🔴', idle = '🟢', unknown = '⚪' },
   -- Order matters: first match wins. Checked only against the active bottom of
   -- the buffer (last `active_lines` non-blank lines) so stale prompts and quoted
@@ -46,7 +53,11 @@ local defaults = {
 
 M.opts = vim.deepcopy(defaults)
 M.sessions = {} -- bufnr -> { state, name, changed_at }
+
 local timer = nil
+local popup_win, popup_buf = nil, nil
+local echo_shown = false -- do we currently occupy the echo line?
+local had_blocked = false -- was anything blocked on the previous scan?
 
 -- Classify a terminal buffer by the text at its active bottom -----------------
 -- We pull a tail window, drop trailing blank lines (terminal buffers pad the
@@ -86,23 +97,110 @@ local function term_title(buf)
   return cmd:sub(1, 40)
 end
 
+-- Group current sessions by state, each list sorted by bufnr (stable order) ---
+local function collect()
+  local g = { blocked = {}, working = {}, idle = {} }
+  for buf, s in pairs(M.sessions) do
+    if g[s.state] then
+      g[s.state][#g[s.state] + 1] = { buf = buf, name = s.name }
+    end
+  end
+  for _, list in pairs(g) do
+    table.sort(list, function(a, b) return a.buf < b.buf end)
+  end
+  return g
+end
+
+-- Floating popup (opt-in) ------------------------------------------------------
+local function close_popup()
+  if popup_win and vim.api.nvim_win_is_valid(popup_win) then
+    vim.api.nvim_win_close(popup_win, true)
+  end
+  popup_win = nil
+end
+M.close_popup = close_popup
+
+local function open_popup(blocked)
+  local lines = { ' ' .. M.opts.icons.blocked .. ' agent needs you ' }
+  for _, e in ipairs(blocked) do
+    lines[#lines + 1] = '   • ' .. e.name
+  end
+  lines[#lines + 1] = ' [<leader>ab] jump '
+
+  local width = 0
+  for _, l in ipairs(lines) do
+    width = math.max(width, vim.fn.strdisplaywidth(l))
+  end
+
+  if not (popup_buf and vim.api.nvim_buf_is_valid(popup_buf)) then
+    popup_buf = vim.api.nvim_create_buf(false, true)
+  end
+  vim.bo[popup_buf].modifiable = true
+  vim.api.nvim_buf_set_lines(popup_buf, 0, -1, false, lines)
+  vim.bo[popup_buf].modifiable = false
+
+  local cfg = {
+    relative = 'editor',
+    anchor = 'NE',
+    row = 1,
+    col = math.max(0, vim.o.columns - 1),
+    width = width,
+    height = #lines,
+    style = 'minimal',
+    border = 'rounded',
+    focusable = false,
+    zindex = 200,
+  }
+  if popup_win and vim.api.nvim_win_is_valid(popup_win) then
+    vim.api.nvim_win_set_config(popup_win, cfg)
+  else
+    cfg.noautocmd = true
+    popup_win = vim.api.nvim_open_win(popup_buf, false, cfg)
+    vim.wo[popup_win].winhighlight = 'Normal:NormalFloat,FloatBorder:DiagnosticError'
+  end
+end
+
+-- Echo-line summary (opt-in): "agents  🔴 claude  🟡 codex" --------------------
+local function render_echo(g)
+  if not M.opts.echo then return end
+  -- Never clobber the command line while the user is typing a command.
+  if vim.fn.mode():sub(1, 1) == 'c' then return end
+
+  local chunks = {}
+  local function add(list, icon, hl)
+    for _, e in ipairs(list) do
+      chunks[#chunks + 1] = { (#chunks > 0 and '  ' or '') .. icon .. ' ' .. e.name, hl }
+    end
+  end
+  add(g.blocked, M.opts.icons.blocked, 'ErrorMsg')
+  add(g.working, M.opts.icons.working, 'MoreMsg')
+
+  if #chunks == 0 then
+    if echo_shown then
+      vim.api.nvim_echo({ { '' } }, false, {})
+      echo_shown = false
+    end
+    return
+  end
+  table.insert(chunks, 1, { 'agents ', 'Comment' })
+  vim.api.nvim_echo(chunks, false, {}) -- false = don't add to :messages history
+  echo_shown = true
+end
+
 -- Poll loop --------------------------------------------------------------------
 local function scan()
   local seen = {}
+  local newly_blocked = {}
   for _, buf in ipairs(vim.api.nvim_list_bufs()) do
     if vim.api.nvim_buf_is_loaded(buf) and vim.bo[buf].buftype == 'terminal' then
       seen[buf] = true
       local state = classify(buf)
       local prev = M.sessions[buf]
       if not prev or prev.state ~= state then
-        M.sessions[buf] = {
-          state = state,
-          name = term_title(buf),
-          changed_at = os.time(),
-        }
-        -- Notify only on the transition INTO blocked, not every poll.
-        if state == 'blocked' and M.opts.notify and prev then
-          vim.notify(('%s agent needs you: %s'):format(M.opts.icons.blocked, term_title(buf)), vim.log.levels.WARN, { title = 'agent-watch' })
+        M.sessions[buf] = { state = state, name = term_title(buf), changed_at = os.time() }
+        -- Collect NEW blocks (transitions), so we notify once, not every poll.
+        if state == 'blocked' and prev then
+          newly_blocked[#newly_blocked + 1] = M.sessions[buf].name
         end
       end
     end
@@ -111,6 +209,38 @@ local function scan()
   for buf in pairs(M.sessions) do
     if not seen[buf] then M.sessions[buf] = nil end
   end
+
+  local g = collect()
+  local any_blocked = #g.blocked > 0
+
+  -- (1) Toast on each new block.
+  if M.opts.notify then
+    for _, name in ipairs(newly_blocked) do
+      vim.notify(('%s agent needs you: %s'):format(M.opts.icons.blocked, name), vim.log.levels.WARN, { title = 'agent-watch' })
+    end
+  end
+
+  -- (2) Popup: show while anything is blocked, close when clear.
+  if M.opts.popup then
+    if any_blocked then
+      open_popup(g.blocked)
+    else
+      close_popup()
+    end
+  end
+
+  -- Clear the lingering "needs you" message once nothing is blocked anymore.
+  -- (No-op for toast notifiers; fixes the sticky default-notifier cmdline.)
+  if had_blocked and not any_blocked and not M.opts.echo then
+    if vim.fn.mode():sub(1, 1) ~= 'c' then
+      vim.api.nvim_echo({ { '' } }, false, {})
+    end
+  end
+  had_blocked = any_blocked
+
+  -- (3) Continuous echo-line summary of active sessions.
+  render_echo(g)
+
   vim.cmd 'redrawstatus'
 end
 
@@ -157,6 +287,7 @@ end
 function M.jump_blocked()
   for buf, s in pairs(M.sessions) do
     if s.state == 'blocked' then
+      close_popup() -- acting on it dismisses the popup
       for _, win in ipairs(vim.api.nvim_list_wins()) do
         if vim.api.nvim_win_get_buf(win) == buf then
           vim.api.nvim_set_current_win(win)
@@ -175,6 +306,11 @@ end
 -- Setup --------------------------------------------------------------------------
 function M.setup(opts)
   M.opts = vim.tbl_deep_extend('force', vim.deepcopy(defaults), opts or {})
+
+  -- Reset transient UI state so re-running setup() is clean.
+  close_popup()
+  had_blocked = false
+  echo_shown = false
 
   if timer then
     timer:stop()
