@@ -24,9 +24,13 @@ local defaults = {
   active_lines = 8, -- of those, how many trailing NON-blank lines to actually match
   hook_ttl = 30, -- seconds a hook-reported state (M.report) stays authoritative before falling back to TUI scraping
   done_debounce = 2, -- seconds a session must stay idle before it's announced as "finished" (absorbs premature Stop / quick resume)
-  notify = true, -- vim.notify (toast/message) on new blocked / finished session
-  hud = false, -- persistent top-right float listing every ACTIVE agent (working/blocked/done)
-  popup = false, -- attention-only float (blocked/done); superseded by `hud` when hud=true
+  notify = true, -- master switch for vim.notify toasts (set false for "float only, no noise")
+  notify_blocked = true, -- toast when an agent needs you (gated by `notify`)
+  notify_done = true, -- toast when an agent finishes (gated by `notify`)
+  hud = false, -- floating display: working agents at `hud_pos`, attention at `attention_pos`
+  popup = false, -- show only the attention float (blocked/done); `hud` also adds the working corner
+  hud_pos = 'NE', -- corner for the passive working list: 'NE' | 'NW' | 'SE' | 'SW'
+  attention_pos = 'center', -- where blocked/finished pop: 'center' | 'NE' | 'NW' | 'SE' | 'SW'
   echo = false, -- continuously show active agents in the echo line (transient; often clobbered by terminal redraws)
   alert_done = true, -- treat working -> idle ("finished") as an attention event
   icons = { working = '🟡', blocked = '🔴', idle = '🟢', done = '✅', unknown = '⚪' },
@@ -80,7 +84,8 @@ M.agents = {} -- bufnr -> true (terminals confirmed to be agents)
 M.reported = {} -- bufnr -> { state, at } (deterministic state pushed by a Claude hook)
 
 local timer = nil
-local popup_win, popup_buf = nil, nil
+local hud_win, hud_buf = nil, nil -- passive working list (corner)
+local att_win, att_buf = nil, nil -- blocked/finished (center by default)
 local echo_shown = false -- do we currently occupy the echo line?
 local had_attention = false -- was anything blocked/done on the previous scan?
 
@@ -171,81 +176,98 @@ local function collect()
   return g
 end
 
--- Floating status window ------------------------------------------------------
--- `hud`   : persistent top-right float listing EVERY active agent.
--- `popup` : same window, but only appears when something needs attention.
-local function close_float()
-  if popup_win and vim.api.nvim_win_is_valid(popup_win) then
-    vim.api.nvim_win_close(popup_win, true)
+-- Floating status windows -----------------------------------------------------
+-- Two independent floats, both driven by `hud`/`popup`:
+--   working list -> `hud_pos` corner (passive)
+--   blocked/finished -> `attention_pos` (center by default, to grab attention)
+-- If the two positions are equal they merge into one float to avoid overlap.
+local function place(pos, width, height)
+  local cols, lines = vim.o.columns, vim.o.lines
+  local bottom = math.max(1, lines - vim.o.cmdheight - 1)
+  local cfg = { relative = 'editor', width = width, height = height, style = 'minimal', border = 'rounded', focusable = false, zindex = 200 }
+  if pos == 'center' then
+    cfg.anchor, cfg.row, cfg.col = 'NW', math.max(0, math.floor((lines - height) / 2) - 1), math.max(0, math.floor((cols - width) / 2))
+  elseif pos == 'NW' then
+    cfg.anchor, cfg.row, cfg.col = 'NW', 1, 0
+  elseif pos == 'SE' then
+    cfg.anchor, cfg.row, cfg.col = 'SE', bottom, cols - 1
+  elseif pos == 'SW' then
+    cfg.anchor, cfg.row, cfg.col = 'SW', bottom, 0
+  else -- 'NE' (default)
+    cfg.anchor, cfg.row, cfg.col = 'NE', 1, cols - 1
   end
-  popup_win = nil
+  return cfg
 end
-M.close_popup = close_float
 
-local function render_float(g)
-  local show_done = M.opts.alert_done and g.done or {}
-  local attention = #g.blocked > 0 or #show_done > 0
-
-  local show
-  if M.opts.hud then
-    show = (#g.blocked + #show_done + #g.working) > 0
-  elseif M.opts.popup then
-    show = attention
-  else
-    show = false
+-- Draw (or close) one float; returns the (win, buf) to store back.
+local function draw(win, buf, lines, pos, border_hl)
+  if #lines == 0 then
+    if win and vim.api.nvim_win_is_valid(win) then vim.api.nvim_win_close(win, true) end
+    return nil, buf
   end
-  if not show then
-    close_float()
-    return
-  end
-
-  -- One line per active agent, highest-priority state first.
-  local lines = {}
-  local function add(list, icon)
-    for _, e in ipairs(list) do
-      lines[#lines + 1] = ' ' .. icon .. ' ' .. e.name .. ' '
-    end
-  end
-  add(g.blocked, M.opts.icons.blocked)
-  add(show_done, M.opts.icons.done)
-  if M.opts.hud then add(g.working, M.opts.icons.working) end
-  if attention then lines[#lines + 1] = ' [<leader>ab] jump ' end
-
   local width = 0
   for _, l in ipairs(lines) do
     width = math.max(width, vim.fn.strdisplaywidth(l))
   end
-
-  if not (popup_buf and vim.api.nvim_buf_is_valid(popup_buf)) then
-    popup_buf = vim.api.nvim_create_buf(false, true)
+  if not (buf and vim.api.nvim_buf_is_valid(buf)) then
+    buf = vim.api.nvim_create_buf(false, true)
   end
-  vim.bo[popup_buf].modifiable = true
-  vim.api.nvim_buf_set_lines(popup_buf, 0, -1, false, lines)
-  vim.bo[popup_buf].modifiable = false
-
-  local cfg = {
-    relative = 'editor',
-    anchor = 'NE',
-    row = 1,
-    col = math.max(0, vim.o.columns - 1),
-    width = width,
-    height = #lines,
-    style = 'minimal',
-    border = 'rounded',
-    focusable = false,
-    zindex = 200,
-  }
-  if popup_win and vim.api.nvim_win_is_valid(popup_win) then
-    vim.api.nvim_win_set_config(popup_win, cfg)
+  vim.bo[buf].modifiable = true
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+  vim.bo[buf].modifiable = false
+  local cfg = place(pos, width, #lines)
+  if win and vim.api.nvim_win_is_valid(win) then
+    vim.api.nvim_win_set_config(win, cfg)
   else
     cfg.noautocmd = true
-    popup_win = vim.api.nvim_open_win(popup_buf, false, cfg)
+    win = vim.api.nvim_open_win(buf, false, cfg)
   end
-  -- Border color by priority: red blocked > green done > amber working.
-  local border_hl = (#g.blocked > 0 and 'DiagnosticError')
-    or (#show_done > 0 and 'DiagnosticOk')
-    or 'DiagnosticWarn'
-  vim.wo[popup_win].winhighlight = 'Normal:NormalFloat,FloatBorder:' .. border_hl
+  vim.wo[win].winhighlight = 'Normal:NormalFloat,FloatBorder:' .. border_hl
+  return win, buf
+end
+
+local function close_float()
+  hud_win, hud_buf = draw(hud_win, hud_buf, {}, 'NE', '')
+  att_win, att_buf = draw(att_win, att_buf, {}, 'NE', '')
+end
+M.close_popup = close_float
+
+local function line_for(icon, name)
+  return ' ' .. icon .. ' ' .. name .. ' '
+end
+
+local function render_float(g)
+  local show_done = M.opts.alert_done and g.done or {}
+  local show_working = M.opts.hud
+  local show_attention = M.opts.hud or M.opts.popup
+
+  local working_lines = {}
+  for _, e in ipairs(g.working) do
+    working_lines[#working_lines + 1] = line_for(M.opts.icons.working, e.name)
+  end
+  local att_lines = {}
+  for _, e in ipairs(g.blocked) do
+    att_lines[#att_lines + 1] = line_for(M.opts.icons.blocked, e.name)
+  end
+  for _, e in ipairs(show_done) do
+    att_lines[#att_lines + 1] = line_for(M.opts.icons.done, e.name)
+  end
+  if #att_lines > 0 then att_lines[#att_lines + 1] = ' [<leader>ab] jump ' end
+  local att_hl = (#g.blocked > 0 and 'DiagnosticError') or 'DiagnosticOk'
+
+  -- Merge into one corner float when both target the same position.
+  if show_working and show_attention and M.opts.hud_pos == M.opts.attention_pos then
+    local merged = {}
+    for _, l in ipairs(att_lines) do merged[#merged + 1] = l end
+    for _, l in ipairs(working_lines) do merged[#merged + 1] = l end
+    local hl = (#g.blocked > 0 and 'DiagnosticError') or (#show_done > 0 and 'DiagnosticOk') or 'DiagnosticWarn'
+    hud_win, hud_buf = draw(hud_win, hud_buf, merged, M.opts.hud_pos, hl)
+    att_win, att_buf = draw(att_win, att_buf, {}, 'NE', '') -- close the other
+    return
+  end
+
+  hud_win, hud_buf = draw(hud_win, hud_buf, show_working and working_lines or {}, M.opts.hud_pos, 'DiagnosticWarn')
+  att_win, att_buf = draw(att_win, att_buf, show_attention and att_lines or {}, M.opts.attention_pos, att_hl)
 end
 
 -- Echo-line summary (opt-in): "agents  🔴 claude  🟡 codex  ✅ aider" ----------
@@ -368,10 +390,12 @@ local function scan()
 
   -- Toast on each new blocked / finished session.
   if M.opts.notify then
-    for _, name in ipairs(newly_blocked) do
-      vim.notify(('%s agent needs you: %s'):format(M.opts.icons.blocked, name), vim.log.levels.WARN, { title = 'agent-watch' })
+    if M.opts.notify_blocked then
+      for _, name in ipairs(newly_blocked) do
+        vim.notify(('%s agent needs you: %s'):format(M.opts.icons.blocked, name), vim.log.levels.WARN, { title = 'agent-watch' })
+      end
     end
-    if M.opts.alert_done then
+    if M.opts.alert_done and M.opts.notify_done then
       for _, name in ipairs(newly_done) do
         vim.notify(('%s agent finished: %s'):format(M.opts.icons.done, name), vim.log.levels.INFO, { title = 'agent-watch' })
       end
