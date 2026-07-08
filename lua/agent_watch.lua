@@ -307,26 +307,30 @@ local function scan()
       local prev = M.sessions[buf]
       local name = term_title(buf) -- recompute each poll so renames/title changes show
 
-      -- "done" = finished working, debounced so a premature Stop or a quick
-      -- resume (e.g. right after answering a prompt) doesn't flash a false
-      -- "finished". Cleared when it works again or you view its buffer.
+      -- "done" = finished working. Start the finish countdown only on a real
+      -- idle SIGNAL: a hook Stop/idle_prompt (rep == 'idle'), or a scraped
+      -- working->idle for agents with no hooks. A transient scrape-idle gap
+      -- during hook-driven work (e.g. the spinner blink at the tool->response
+      -- boundary) is NOT "finished". The countdown is then debounced, so a
+      -- premature Stop or a quick resume never flashes a false "finished".
       local was_done = prev and prev.done or false
-      local done, pending = false, false
-      if state == 'idle' then
-        if was_done then
-          done = true -- already announced; stay done
-        elseif prev and prev.state == 'working' then
-          pending = true -- just went idle; wait out the debounce
-        elseif prev and prev.state == 'idle' and prev.finished_pending then
-          if (os.time() - prev.changed_at) >= M.opts.done_debounce then
-            done = true
-          else
-            pending = true
-          end
+      local pending_since = prev and prev.pending_since or nil
+      local is_hooked = M.reported[buf] ~= nil
+      local done = false
+      if state ~= 'idle' then
+        pending_since = nil -- working/blocked cancels any pending finish
+      elseif was_done then
+        done = true -- already announced; stay done
+      else
+        local eligible = (rep == 'idle') or (not is_hooked and prev and prev.state == 'working')
+        if pending_since then
+          if (os.time() - pending_since) >= M.opts.done_debounce then done = true end
+        elseif eligible then
+          pending_since = os.time() -- begin the debounce countdown
         end
       end
       if buf == cur then
-        done, pending = false, false -- viewing it = acknowledged
+        done, pending_since = false, nil -- viewing it = acknowledged
       end
 
       if state == 'blocked' and prev and prev.state ~= 'blocked' then
@@ -342,7 +346,7 @@ local function scan()
         name = name,
         changed_at = changed and os.time() or prev.changed_at,
         done = done,
-        finished_pending = pending,
+        pending_since = pending_since,
       }
     end
   end
