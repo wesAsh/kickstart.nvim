@@ -22,6 +22,7 @@ local defaults = {
   poll_ms = 1000, -- how often to scan terminal buffers
   tail_lines = 40, -- how many trailing lines to pull from the buffer
   active_lines = 8, -- of those, how many trailing NON-blank lines to actually match
+  hook_ttl = 30, -- seconds a hook-reported state (M.report) stays authoritative before falling back to TUI scraping
   notify = true, -- vim.notify (toast/message) on new blocked / finished session
   hud = false, -- persistent top-right float listing every ACTIVE agent (working/blocked/done)
   popup = false, -- attention-only float (blocked/done); superseded by `hud` when hud=true
@@ -75,6 +76,7 @@ local defaults = {
 M.opts = vim.deepcopy(defaults)
 M.sessions = {} -- bufnr -> { state, name, changed_at, done }
 M.agents = {} -- bufnr -> true (terminals confirmed to be agents)
+M.reported = {} -- bufnr -> { state, at } (deterministic state pushed by a Claude hook)
 
 local timer = nil
 local popup_win, popup_buf = nil, nil
@@ -265,7 +267,10 @@ local function scan()
   for _, buf in ipairs(vim.api.nvim_list_bufs()) do
     if vim.api.nvim_buf_is_loaded(buf) and vim.bo[buf].buftype == 'terminal' and is_agent(buf) then
       seen[buf] = true
-      local state = classify(buf)
+      -- A hook-reported state (M.report) is authoritative for hook_ttl seconds;
+      -- otherwise fall back to scraping the TUI.
+      local r = M.reported[buf]
+      local state = (r and (os.time() - r.at) <= M.opts.hook_ttl) and r.state or classify(buf)
       local prev = M.sessions[buf]
       local name = prev and prev.name or term_title(buf)
 
@@ -304,6 +309,9 @@ local function scan()
   for buf in pairs(M.agents) do
     if not vim.api.nvim_buf_is_valid(buf) then M.agents[buf] = nil end
   end
+  for buf in pairs(M.reported) do
+    if not seen[buf] then M.reported[buf] = nil end
+  end
 
   local g = collect()
   local done_list = M.opts.alert_done and g.done or {}
@@ -335,6 +343,21 @@ local function scan()
 
   render_echo(g)
   vim.cmd 'redrawstatus'
+end
+
+-- Deterministic state push from a Claude hook (hooks/nvim_agent_state.sh).
+-- Keyed by the terminal job PID so it lands on the exact terminal buffer, then
+-- refreshes immediately. o = { pid = <terminal_job_pid>, state = 'working'|'blocked'|'idle' }
+function M.report(o)
+  if type(o) ~= 'table' or not o.pid or not o.state then return end
+  for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+    if vim.api.nvim_buf_is_loaded(buf) and vim.bo[buf].buftype == 'terminal' and vim.b[buf].terminal_job_pid == o.pid then
+      M.agents[buf] = true -- a hook firing proves this terminal is an agent
+      M.reported[buf] = { state = o.state, at = os.time() }
+      break
+    end
+  end
+  scan()
 end
 
 -- Statusline component: e.g. "🔴1 🟡2 🟢1" --------------------------------------
@@ -420,6 +443,7 @@ function M.setup(opts)
   -- Reset transient state so re-running setup() is clean.
   close_float()
   M.agents = {}
+  M.reported = {}
   had_attention = false
   echo_shown = false
 
