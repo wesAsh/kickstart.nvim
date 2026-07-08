@@ -23,8 +23,9 @@ local defaults = {
   tail_lines = 40, -- how many trailing lines to pull from the buffer
   active_lines = 8, -- of those, how many trailing NON-blank lines to actually match
   notify = true, -- vim.notify (toast/message) on new blocked / finished session
-  popup = false, -- also pop a floating window listing agents needing attention
-  echo = false, -- continuously show active agents in the echo line
+  hud = false, -- persistent top-right float listing every ACTIVE agent (working/blocked/done)
+  popup = false, -- attention-only float (blocked/done); superseded by `hud` when hud=true
+  echo = false, -- continuously show active agents in the echo line (transient; often clobbered by terminal redraws)
   alert_done = true, -- treat working -> idle ("finished") as an attention event
   icons = { working = '🟡', blocked = '🔴', idle = '🟢', done = '✅', unknown = '⚪' },
 
@@ -150,30 +151,45 @@ local function collect()
   return g
 end
 
--- Floating popup (opt-in) ------------------------------------------------------
-local function close_popup()
+-- Floating status window ------------------------------------------------------
+-- `hud`   : persistent top-right float listing EVERY active agent.
+-- `popup` : same window, but only appears when something needs attention.
+local function close_float()
   if popup_win and vim.api.nvim_win_is_valid(popup_win) then
     vim.api.nvim_win_close(popup_win, true)
   end
   popup_win = nil
 end
-M.close_popup = close_popup
+M.close_popup = close_float
 
-local function open_popup(blocked, done)
+local function render_float(g)
+  local show_done = M.opts.alert_done and g.done or {}
+  local attention = #g.blocked > 0 or #show_done > 0
+
+  local show
+  if M.opts.hud then
+    show = (#g.blocked + #show_done + #g.working) > 0
+  elseif M.opts.popup then
+    show = attention
+  else
+    show = false
+  end
+  if not show then
+    close_float()
+    return
+  end
+
+  -- One line per active agent, highest-priority state first.
   local lines = {}
-  if #blocked > 0 then
-    lines[#lines + 1] = ' ' .. M.opts.icons.blocked .. ' agent needs you '
-    for _, e in ipairs(blocked) do
-      lines[#lines + 1] = '   • ' .. e.name
+  local function add(list, icon)
+    for _, e in ipairs(list) do
+      lines[#lines + 1] = ' ' .. icon .. ' ' .. e.name .. ' '
     end
   end
-  if #done > 0 then
-    lines[#lines + 1] = ' ' .. M.opts.icons.done .. ' agent finished '
-    for _, e in ipairs(done) do
-      lines[#lines + 1] = '   • ' .. e.name
-    end
-  end
-  lines[#lines + 1] = ' [<leader>ab] jump '
+  add(g.blocked, M.opts.icons.blocked)
+  add(show_done, M.opts.icons.done)
+  if M.opts.hud then add(g.working, M.opts.icons.working) end
+  if attention then lines[#lines + 1] = ' [<leader>ab] jump ' end
 
   local width = 0
   for _, l in ipairs(lines) do
@@ -205,8 +221,10 @@ local function open_popup(blocked, done)
     cfg.noautocmd = true
     popup_win = vim.api.nvim_open_win(popup_buf, false, cfg)
   end
-  -- Red border if anything is blocked, green if only finished.
-  local border_hl = (#blocked > 0) and 'DiagnosticError' or 'DiagnosticOk'
+  -- Border color by priority: red blocked > green done > amber working.
+  local border_hl = (#g.blocked > 0 and 'DiagnosticError')
+    or (#show_done > 0 and 'DiagnosticOk')
+    or 'DiagnosticWarn'
   vim.wo[popup_win].winhighlight = 'Normal:NormalFloat,FloatBorder:' .. border_hl
 end
 
@@ -303,14 +321,8 @@ local function scan()
     end
   end
 
-  -- Popup: show while anything needs attention, close when clear.
-  if M.opts.popup then
-    if attention then
-      open_popup(g.blocked, done_list)
-    else
-      close_popup()
-    end
-  end
+  -- Floating status window: HUD (all active) or attention-only popup.
+  render_float(g)
 
   -- Clear the lingering alert message once nothing needs attention anymore.
   -- (No-op for toast notifiers; fixes the sticky default-notifier cmdline.)
@@ -389,7 +401,7 @@ function M.jump_blocked()
   end
 
   if M.sessions[target] then M.sessions[target].done = false end
-  close_popup() -- acting on it dismisses the popup
+  close_float() -- acting on it dismisses the float
   for _, win in ipairs(vim.api.nvim_list_wins()) do
     if vim.api.nvim_win_get_buf(win) == target then
       vim.api.nvim_set_current_win(win)
@@ -406,7 +418,7 @@ function M.setup(opts)
   M.opts = vim.tbl_deep_extend('force', vim.deepcopy(defaults), opts or {})
 
   -- Reset transient state so re-running setup() is clean.
-  close_popup()
+  close_float()
   M.agents = {}
   had_attention = false
   echo_shown = false
