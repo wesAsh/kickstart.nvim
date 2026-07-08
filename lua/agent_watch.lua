@@ -130,10 +130,27 @@ end
 -- Exposed for tuning/debugging: :lua print(require('agent_watch').classify(0))
 M.classify = classify
 
+-- A human-readable label for a terminal buffer. Priority:
+--   1. an explicit rename (`:file X`) — the buffer name is no longer a term:// URI
+--   2. a program-set title (OSC 0/2 -> b:term_title), e.g. the shell/agent's title
+--   3. "cmd:cwd-basename" from the term:// URI, so identical shells stay distinguishable
 local function term_title(buf)
-  local name = vim.api.nvim_buf_get_name(buf) -- term://cwd//pid:cmd
-  local cmd = name:match 'term://.-//%d+:(.*)' or name
-  return cmd:sub(1, 40)
+  local name = vim.api.nvim_buf_get_name(buf) -- term://cwd//pid:cmd (until renamed)
+
+  if not name:match '^term://' then
+    return vim.fn.fnamemodify(name, ':t'):sub(1, 40)
+  end
+
+  local tt = vim.b[buf].term_title
+  if type(tt) == 'string' and tt ~= '' and not tt:match '^term://' then
+    return tt:sub(1, 40)
+  end
+
+  local cwd, cmd = name:match 'term://(.-)//%d+:(.*)'
+  cmd = vim.fn.fnamemodify(cmd or name, ':t')
+  local dir = cwd and vim.fn.fnamemodify(cwd, ':t') or ''
+  local label = (dir ~= '' and cmd ~= '') and (cmd .. ':' .. dir) or (cmd ~= '' and cmd or dir)
+  return label:sub(1, 40)
 end
 
 -- Group current sessions, each list sorted by bufnr (stable order) ------------
@@ -272,7 +289,7 @@ local function scan()
       local r = M.reported[buf]
       local state = (r and (os.time() - r.at) <= M.opts.hook_ttl) and r.state or classify(buf)
       local prev = M.sessions[buf]
-      local name = prev and prev.name or term_title(buf)
+      local name = term_title(buf) -- recompute each poll so renames/title changes show
 
       -- "done" = finished working and not yet looked at. Persists across idle
       -- polls; cleared when the agent works again or you view its buffer.
