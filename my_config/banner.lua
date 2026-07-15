@@ -5,7 +5,8 @@
 --   :Banner Hello World          → ansi_shadow banner, inserted below the line
 --   :Banner -f pagga Section      → pick a font (Tab-completes the nice fonts)
 --
--- Needs pyfiglet (pip install --user pyfiglet). Machine-local dep.
+-- Needs the `pyfiglet` CLI (Ubuntu 24: `sudo apt install python3-pyfiglet`; full
+-- font set restored into /usr/share/figlet/ — see my_config/scripts/figlet-nice.sh).
 
 local default_font = 'ansi_shadow'
 
